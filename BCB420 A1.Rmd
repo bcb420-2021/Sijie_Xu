@@ -1,0 +1,25 @@
+---
+title: "BCB420 A1"
+output: html_notebook
+---
+
+```{r Setup}
+
+if (!requireNamespace("BiocManager", quietly = TRUE))    
+  install.packages("BiocManager")
+
+if (!requireNamespace("GEOmetadb", quietly = TRUE))    
+  BiocManager::install("GEOmetadb")
+
+```
+
+# Find data of interest
+
+```{r GEO}
+
+
+
+
+
+
+```
