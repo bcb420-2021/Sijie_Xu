@@ -11,14 +11,75 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 if (!requireNamespace("GEOmetadb", quietly = TRUE))    
   BiocManager::install("GEOmetadb")
 
+if (!requireNamespace("DBI", quietly = TRUE))
+  install.packages("DBI")
+
+if (!requireNamespace("dplyr", quietly = TRUE))
+  install.packages("dplyr")
+
 ```
 
 # Find data of interest
 
-```{r GEO}
+```{r find GEO}
+
+# Query for interested data set regarding human from 2016 and beyond
+
+findTopic <- function(keyword, skip = FALSE) {
+  
+  # Get meta data and setup connection
+  if(!file.exists('GEOmetadb.sqlite')) GEOmetadb::getSQLiteFile()
+  con <- RSQLite::dbConnect(RSQLite::SQLite(),'GEOmetadb.sqlite')
+  
+  # Form query
+  sql <- paste("SELECT DISTINCT gse.title, gse.gse, gpl.title, gse.submission_date",
+   "FROM",
+   " gse JOIN gse_gpl ON gse_gpl.gse=gse.gse",
+   " JOIN gpl ON gse_gpl.gpl=gpl.gpl",
+   "WHERE",
+   " gse.title LIKE '%",
+   keyword,
+   "%' AND",
+   " gse.submission_date > '2016-01-01' AND",
+   " gpl.organism LIKE '%Homo sapiens%' AND",
+   " gpl.technology LIKE '%high-throughput seq%' ",
+   sep=" ")
+  
+  rs <- RSQLite::dbGetQuery(con,sql)
+  
+  if(!skip) return(rs)
+}
+
+findTopic(keyword = "microRNA") %>% knitr::kable(format = "html")
 
 
+```
 
+```{r download}
+
+# Identify GEO accession
+GEO_accession <- "GSE89225"
+
+# Download File if not exist rds file
+if (!file.exists("GEO_data.rds")) {
+  
+  GEO_dir <- paste0("./", GEO_accession)
+  
+  #Download file from GEO
+  sfiles = GEOquery::getGEOSuppFiles(GEO_accession)
+  
+  # Extract the tar file with txt
+  GEO_data <-read.csv(rownames(sfiles)[1])
+  
+  # Save as rds
+  saveRDS(object = GEO_data, file = "GEO_data.rds")
+  
+  # Delete directory
+  unlink("GSE89225", recursive = TRUE, force = TRUE)
+  
+}
+
+geo_data <- readRDS("GEO_data.rds")
 
 
 

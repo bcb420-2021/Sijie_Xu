@@ -1760,13 +1760,19 @@ summary {
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuXG5pZiAoIXJlcXVpcmVOYW1lc3BhY2UoXCJCaW9jTWFuYWdlclwiLCBxdWlldGx5ID0gVFJVRSkpICAgIFxuICBpbnN0YWxsLnBhY2thZ2VzKFwiQmlvY01hbmFnZXJcIilcblxuaWYgKCFyZXF1aXJlTmFtZXNwYWNlKFwiR0VPbWV0YWRiXCIsIHF1aWV0bHkgPSBUUlVFKSkgICAgXG4gIEJpb2NNYW5hZ2VyOjppbnN0YWxsKFwiR0VPbWV0YWRiXCIpXG5cbmBgYCJ9 -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuXG5pZiAoIXJlcXVpcmVOYW1lc3BhY2UoXCJCaW9jTWFuYWdlclwiLCBxdWlldGx5ID0gVFJVRSkpICAgIFxuICBpbnN0YWxsLnBhY2thZ2VzKFwiQmlvY01hbmFnZXJcIilcblxuaWYgKCFyZXF1aXJlTmFtZXNwYWNlKFwiR0VPbWV0YWRiXCIsIHF1aWV0bHkgPSBUUlVFKSkgICAgXG4gIEJpb2NNYW5hZ2VyOjppbnN0YWxsKFwiR0VPbWV0YWRiXCIpXG5cbmlmICghcmVxdWlyZU5hbWVzcGFjZShcIkRCSVwiLCBxdWlldGx5ID0gVFJVRSkpXG4gIGluc3RhbGwucGFja2FnZXMoXCJEQklcIilcblxuaWYgKCFyZXF1aXJlTmFtZXNwYWNlKFwiZHBseXJcIiwgcXVpZXRseSA9IFRSVUUpKVxuICBpbnN0YWxsLnBhY2thZ2VzKFwiZHBseXJcIilcblxuYGBgIn0= -->
 <pre class="r"><code>
 if (!requireNamespace(&quot;BiocManager&quot;, quietly = TRUE))    
   install.packages(&quot;BiocManager&quot;)
 
 if (!requireNamespace(&quot;GEOmetadb&quot;, quietly = TRUE))    
   BiocManager::install(&quot;GEOmetadb&quot;)
+
+if (!requireNamespace(&quot;DBI&quot;, quietly = TRUE))
+  install.packages(&quot;DBI&quot;)
+
+if (!requireNamespace(&quot;dplyr&quot;, quietly = TRUE))
+  install.packages(&quot;dplyr&quot;)
 </code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
@@ -1775,10 +1781,73 @@ if (!requireNamespace(&quot;GEOmetadb&quot;, quietly = TRUE))
 <h1>Find data of interest</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuXG4jIFF1ZXJ5IGZvciBpbnRlcmVzdGVkIGRhdGEgc2V0IHJlZ2FyZGluZyBodW1hbiBmcm9tIDIwMTYgYW5kIGJleW9uZFxuXG5maW5kVG9waWMgPC0gZnVuY3Rpb24oa2V5d29yZCwgc2tpcCA9IEZBTFNFKSB7XG4gIFxuICAjIEdldCBtZXRhIGRhdGEgYW5kIHNldHVwIGNvbm5lY3Rpb25cbiAgaWYoIWZpbGUuZXhpc3RzKCdHRU9tZXRhZGIuc3FsaXRlJykpIEdFT21ldGFkYjo6Z2V0U1FMaXRlRmlsZSgpXG4gIGNvbiA8LSBSU1FMaXRlOjpkYkNvbm5lY3QoUlNRTGl0ZTo6U1FMaXRlKCksJ0dFT21ldGFkYi5zcWxpdGUnKVxuICBcbiAgIyBGb3JtIHF1ZXJ5XG4gIHNxbCA8LSBwYXN0ZShcIlNFTEVDVCBESVNUSU5DVCBnc2UudGl0bGUsIGdzZS5nc2UsIGdwbC50aXRsZSwgZ3NlLnN1Ym1pc3Npb25fZGF0ZVwiLFxuICAgXCJGUk9NXCIsXG4gICBcIiBnc2UgSk9JTiBnc2VfZ3BsIE9OIGdzZV9ncGwuZ3NlPWdzZS5nc2VcIixcbiAgIFwiIEpPSU4gZ3BsIE9OIGdzZV9ncGwuZ3BsPWdwbC5ncGxcIixcbiAgIFwiV0hFUkVcIixcbiAgIFwiIGdzZS50aXRsZSBMSUtFICclXCIsXG4gICBrZXl3b3JkLFxuICAgXCIlJyBBTkRcIixcbiAgIFwiIGdzZS5zdWJtaXNzaW9uX2RhdGUgPiAnMjAxNi0wMS0wMScgQU5EXCIsXG4gICBcIiBncGwub3JnYW5pc20gTElLRSAnJUhvbW8gc2FwaWVucyUnIEFORFwiLFxuICAgXCIgZ3BsLnRlY2hub2xvZ3kgTElLRSAnJWhpZ2gtdGhyb3VnaHB1dCBzZXElJyBcIixcbiAgIHNlcD1cIiBcIilcbiAgXG4gIHJzIDwtIFJTUUxpdGU6OmRiR2V0UXVlcnkoY29uLHNxbClcbiAgXG4gIGlmKCFza2lwKSByZXR1cm4ocnMpXG59XG5cbmZpbmRUb3BpYyhrZXl3b3JkID0gXCJtaWNyb1JOQVwiKSAlPiUga25pdHI6OmthYmxlKGZvcm1hdCA9IFwiaHRtbFwiKVxuXG5cbmBgYCJ9 -->
+<pre class="r"><code>
+# Query for interested data set regarding human from 2016 and beyond
+
+findTopic &lt;- function(keyword, skip = FALSE) {
+  
+  # Get meta data and setup connection
+  if(!file.exists(&#39;GEOmetadb.sqlite&#39;)) GEOmetadb::getSQLiteFile()
+  con &lt;- RSQLite::dbConnect(RSQLite::SQLite(),&#39;GEOmetadb.sqlite&#39;)
+  
+  # Form query
+  sql &lt;- paste(&quot;SELECT DISTINCT gse.title, gse.gse, gpl.title, gse.submission_date&quot;,
+   &quot;FROM&quot;,
+   &quot; gse JOIN gse_gpl ON gse_gpl.gse=gse.gse&quot;,
+   &quot; JOIN gpl ON gse_gpl.gpl=gpl.gpl&quot;,
+   &quot;WHERE&quot;,
+   &quot; gse.title LIKE &#39;%&quot;,
+   keyword,
+   &quot;%&#39; AND&quot;,
+   &quot; gse.submission_date &gt; &#39;2016-01-01&#39; AND&quot;,
+   &quot; gpl.organism LIKE &#39;%Homo sapiens%&#39; AND&quot;,
+   &quot; gpl.technology LIKE &#39;%high-throughput seq%&#39; &quot;,
+   sep=&quot; &quot;)
+  
+  rs &lt;- RSQLite::dbGetQuery(con,sql)
+  
+  if(!skip) return(rs)
+}
+
+findTopic(keyword = &quot;microRNA&quot;) %&gt;% knitr::kable(format = &quot;html&quot;)
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuXG4jIElkZW50aWZ5IEdFTyBhY2Nlc3Npb25cbkdFT19hY2Nlc3Npb24gPC0gXCJHU0U4OTIyNVwiXG5cbiMgRG93bmxvYWQgRmlsZSBpZiBub3QgZXhpc3QgcmRzIGZpbGVcbmlmICghZmlsZS5leGlzdHMoXCJHRU9fZGF0YS5yZHNcIikpIHtcbiAgXG4gIEdFT19kaXIgPC0gcGFzdGUwKFwiLi9cIiwgR0VPX2FjY2Vzc2lvbilcbiAgXG4gICNEb3dubG9hZCBmaWxlIGZyb20gR0VPXG4gIHNmaWxlcyA9IEdFT3F1ZXJ5OjpnZXRHRU9TdXBwRmlsZXMoR0VPX2FjY2Vzc2lvbilcbiAgXG4gICMgRXh0cmFjdCB0aGUgdGFyIGZpbGUgd2l0aCB0eHRcbiAgR0VPX2RhdGEgPC1yZWFkLmNzdihyb3duYW1lcyhzZmlsZXMpWzFdKVxuICBcbiAgIyBTYXZlIGFzIHJkc1xuICBzYXZlUkRTKG9iamVjdCA9IEdFT19kYXRhLCBmaWxlID0gXCJHRU9fZGF0YS5yZHNcIilcbiAgXG4gICMgRGVsZXRlIGRpcmVjdG9yeVxuICB1bmxpbmsoXCJHU0U4OTIyNVwiLCByZWN1cnNpdmUgPSBUUlVFLCBmb3JjZSA9IFRSVUUpXG4gIFxufVxuXG5nZW9fZGF0YSA8LSByZWFkUkRTKFwiR0VPX2RhdGEucmRzXCIpXG5cblxuXG5gYGAifQ== -->
+<pre class="r"><code>
+# Identify GEO accession
+GEO_accession &lt;- &quot;GSE89225&quot;
+
+# Download File if not exist rds file
+if (!file.exists(&quot;GEO_data.rds&quot;)) {
+  
+  GEO_dir &lt;- paste0(&quot;./&quot;, GEO_accession)
+  
+  #Download file from GEO
+  sfiles = GEOquery::getGEOSuppFiles(GEO_accession)
+  
+  # Extract the tar file with txt
+  GEO_data &lt;-read.csv(rownames(sfiles)[1])
+  
+  # Save as rds
+  saveRDS(object = GEO_data, file = &quot;GEO_data.rds&quot;)
+  
+  # Delete directory
+  unlink(&quot;GSE89225&quot;, recursive = TRUE, force = TRUE)
+  
+}
+
+geo_data &lt;- readRDS(&quot;GEO_data.rds&quot;)
+</code></pre>
+<!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiQkNCNDIwIEExIgpvdXRwdXQ6IGh0bWxfbm90ZWJvb2sKLS0tCgpgYGB7ciBTZXR1cH0KCmlmICghcmVxdWlyZU5hbWVzcGFjZSgiQmlvY01hbmFnZXIiLCBxdWlldGx5ID0gVFJVRSkpICAgIAogIGluc3RhbGwucGFja2FnZXMoIkJpb2NNYW5hZ2VyIikKCmlmICghcmVxdWlyZU5hbWVzcGFjZSgiR0VPbWV0YWRiIiwgcXVpZXRseSA9IFRSVUUpKSAgICAKICBCaW9jTWFuYWdlcjo6aW5zdGFsbCgiR0VPbWV0YWRiIikKCmBgYAoKIyBGaW5kIGRhdGEgb2YgaW50ZXJlc3QKCmBgYHtyIEdFT30KCgoKCgoKYGBgCg==</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiQkNCNDIwIEExIgpvdXRwdXQ6IGh0bWxfbm90ZWJvb2sKLS0tCgpgYGB7ciBTZXR1cH0KCmlmICghcmVxdWlyZU5hbWVzcGFjZSgiQmlvY01hbmFnZXIiLCBxdWlldGx5ID0gVFJVRSkpICAgIAogIGluc3RhbGwucGFja2FnZXMoIkJpb2NNYW5hZ2VyIikKCmlmICghcmVxdWlyZU5hbWVzcGFjZSgiR0VPbWV0YWRiIiwgcXVpZXRseSA9IFRSVUUpKSAgICAKICBCaW9jTWFuYWdlcjo6aW5zdGFsbCgiR0VPbWV0YWRiIikKCmlmICghcmVxdWlyZU5hbWVzcGFjZSgiREJJIiwgcXVpZXRseSA9IFRSVUUpKQogIGluc3RhbGwucGFja2FnZXMoIkRCSSIpCgppZiAoIXJlcXVpcmVOYW1lc3BhY2UoImRwbHlyIiwgcXVpZXRseSA9IFRSVUUpKQogIGluc3RhbGwucGFja2FnZXMoImRwbHlyIikKCmBgYAoKIyBGaW5kIGRhdGEgb2YgaW50ZXJlc3QKCmBgYHtyIGZpbmQgR0VPfQoKIyBRdWVyeSBmb3IgaW50ZXJlc3RlZCBkYXRhIHNldCByZWdhcmRpbmcgaHVtYW4gZnJvbSAyMDE2IGFuZCBiZXlvbmQKCmZpbmRUb3BpYyA8LSBmdW5jdGlvbihrZXl3b3JkLCBza2lwID0gRkFMU0UpIHsKICAKICAjIEdldCBtZXRhIGRhdGEgYW5kIHNldHVwIGNvbm5lY3Rpb24KICBpZighZmlsZS5leGlzdHMoJ0dFT21ldGFkYi5zcWxpdGUnKSkgR0VPbWV0YWRiOjpnZXRTUUxpdGVGaWxlKCkKICBjb24gPC0gUlNRTGl0ZTo6ZGJDb25uZWN0KFJTUUxpdGU6OlNRTGl0ZSgpLCdHRU9tZXRhZGIuc3FsaXRlJykKICAKICAjIEZvcm0gcXVlcnkKICBzcWwgPC0gcGFzdGUoIlNFTEVDVCBESVNUSU5DVCBnc2UudGl0bGUsIGdzZS5nc2UsIGdwbC50aXRsZSwgZ3NlLnN1Ym1pc3Npb25fZGF0ZSIsCiAgICJGUk9NIiwKICAgIiBnc2UgSk9JTiBnc2VfZ3BsIE9OIGdzZV9ncGwuZ3NlPWdzZS5nc2UiLAogICAiIEpPSU4gZ3BsIE9OIGdzZV9ncGwuZ3BsPWdwbC5ncGwiLAogICAiV0hFUkUiLAogICAiIGdzZS50aXRsZSBMSUtFICclIiwKICAga2V5d29yZCwKICAgIiUnIEFORCIsCiAgICIgZ3NlLnN1Ym1pc3Npb25fZGF0ZSA+ICcyMDE2LTAxLTAxJyBBTkQiLAogICAiIGdwbC5vcmdhbmlzbSBMSUtFICclSG9tbyBzYXBpZW5zJScgQU5EIiwKICAgIiBncGwudGVjaG5vbG9neSBMSUtFICclaGlnaC10aHJvdWdocHV0IHNlcSUnICIsCiAgIHNlcD0iICIpCiAgCiAgcnMgPC0gUlNRTGl0ZTo6ZGJHZXRRdWVyeShjb24sc3FsKQogIAogIGlmKCFza2lwKSByZXR1cm4ocnMpCn0KCmZpbmRUb3BpYyhrZXl3b3JkID0gIm1pY3JvUk5BIikgJT4lIGtuaXRyOjprYWJsZShmb3JtYXQgPSAiaHRtbCIpCgoKYGBgCgpgYGB7ciBkb3dubG9hZH0KCiMgSWRlbnRpZnkgR0VPIGFjY2Vzc2lvbgpHRU9fYWNjZXNzaW9uIDwtICJHU0U4OTIyNSIKCiMgRG93bmxvYWQgRmlsZSBpZiBub3QgZXhpc3QgcmRzIGZpbGUKaWYgKCFmaWxlLmV4aXN0cygiR0VPX2RhdGEucmRzIikpIHsKICAKICBHRU9fZGlyIDwtIHBhc3RlMCgiLi8iLCBHRU9fYWNjZXNzaW9uKQogIAogICNEb3dubG9hZCBmaWxlIGZyb20gR0VPCiAgc2ZpbGVzID0gR0VPcXVlcnk6OmdldEdFT1N1cHBGaWxlcyhHRU9fYWNjZXNzaW9uKQogIAogICMgRXh0cmFjdCB0aGUgdGFyIGZpbGUgd2l0aCB0eHQKICBHRU9fZGF0YSA8LXJlYWQuY3N2KHJvd25hbWVzKHNmaWxlcylbMV0pCiAgCiAgIyBTYXZlIGFzIHJkcwogIHNhdmVSRFMob2JqZWN0ID0gR0VPX2RhdGEsIGZpbGUgPSAiR0VPX2RhdGEucmRzIikKICAKICAjIERlbGV0ZSBkaXJlY3RvcnkKICB1bmxpbmsoIkdTRTg5MjI1IiwgcmVjdXJzaXZlID0gVFJVRSwgZm9yY2UgPSBUUlVFKQogIAp9CgpnZW9fZGF0YSA8LSByZWFkUkRTKCJHRU9fZGF0YS5yZHMiKQoKCgpgYGAK</div>
 
 
 
