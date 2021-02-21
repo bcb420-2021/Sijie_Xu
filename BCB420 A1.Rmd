@@ -11,15 +11,31 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 if (!requireNamespace("GEOmetadb", quietly = TRUE))    
   BiocManager::install("GEOmetadb")
 
+if (!requireNamespace("biomaRt", quietly = TRUE))
+  BiocManager::install("biomaRt")
+
 if (!requireNamespace("DBI", quietly = TRUE))
   install.packages("DBI")
 
 if (!requireNamespace("dplyr", quietly = TRUE))
   install.packages("dplyr")
 
+if (!requireNamespace("edgeR", quietly = TRUE))
+  install.packages("edgeR")
+
+if (!requireNamespace("ggplot2", quietly = TRUE))
+  install.packages("ggplot2")
+
+if (!requireNamespace("tidyr", quietly = TRUE))
+  install.packages("tidyr")
+
+library("dplyr")
+
 ```
 
-# Find data of interest
+# Data Exploration
+
+## Find data of interest
 
 ```{r find GEO}
 
@@ -50,10 +66,12 @@ findTopic <- function(keyword, skip = FALSE) {
   if(!skip) return(rs)
 }
 
-findTopic(keyword = "microRNA") %>% knitr::kable(format = "html")
+findTopic(keyword = "microRNA") %>% head() %>% knitr::kable(format = "html")
 
 
 ```
+
+## Download dataset GSE89225
 
 ```{r download}
 
@@ -69,7 +87,7 @@ if (!file.exists("GEO_data.rds")) {
   sfiles = GEOquery::getGEOSuppFiles(GEO_accession)
   
   # Extract the tar file with txt
-  GEO_data <-read.csv(rownames(sfiles)[1])
+  geo_data <- read.csv(rownames(sfiles)[1])
   
   # Save as rds
   saveRDS(object = GEO_data, file = "GEO_data.rds")
@@ -77,10 +95,137 @@ if (!file.exists("GEO_data.rds")) {
   # Delete directory
   unlink("GSE89225", recursive = TRUE, force = TRUE)
   
+} else {
+  geo_data <- readRDS("GEO_data.rds")
 }
 
-geo_data <- readRDS("GEO_data.rds")
+colnames(geo_data) <- c("ensembl_gene_id", colnames(geo_data)[-1])
 
+geo_data[1:5,1:5] %>% knitr::kable(format = "html", caption = "GSE89225 Data Overview")
 
+```
+
+# Data Cleaning
+
+## Basic Cleaning 
+
+```{r basic_cleaning}
+
+# Get the data type matrix
+samples <- data.frame(lapply(colnames(geo_data)[-1], FUN=function(x){unlist(strsplit(x, split = "_"))}))
+colnames(samples) <- colnames(geo_data)[-1]
+rownames(samples) <- c("cell_type","sample_type", "patient")
+samples <- data.frame(t(samples))
+
+# Check for NAs within the data set
+geo_data %>% nrow() - complete.cases(geo_data) %>% sum()
+
+# Check for invalid ensemble_gene_id
+row_with_ensembl_gene <- grepl(pattern = "ENSG", x = geo_data$ensembl_gene_id) 
+geo_data$ensembl_gene_id[!row_with_ensembl_gene] %>% 
+  knitr::kable(type = "html", caption = "Abnormal ensembl gene id")
+
+geo_data <- geo_data[row_with_ensembl_gene,]
+
+# Check for non-reading entries
+row_sum <- geo_data[-1] %>% rowSums()
+geo_data[which(row_sum == 0),] %>% dim()
+
+# Remove zero reading entires
+geo_data <- geo_data[which(row_sum != 0),]
+
+```
+
+## Map data to HGNC
+
+``` {r mapping}
+
+# Create data conversion object
+if (!file.exists("ID_conversion.rds")) {
+
+  ensembl <- biomaRt::useMart("ensembl")
+  ensembl_haspiens <- biomaRt::useDataset("hsapiens_gene_ensembl", mart=ensembl)
+  
+  id_conversion <- biomaRt::getBM(attributes = c("ensembl_gene_id","hgnc_symbol"), 
+                                  filters = c("ensembl_gene_id"), values = geo_data$ensembl_gene_id, mart = ensembl_haspiens)
+  
+  saveRDS(id_conversion, "ID_conversion.rds")
+  
+} else {
+  
+  id_conversion <- readRDS("ID_conversion.rds")
+  
+}
+
+# Map the data set to the merge file
+geo_data_annot <- merge(id_conversion, geo_data, all.y = TRUE, sort = FALSE)
+
+knitr::kable(geo_data_annot[1:5,1:5], type = "html", caption = "HGNC Mapped Data")
+
+# Inspect lost of data via mapping
+ensembl_id_missing_gene <- geo_data_annot$ensembl_gene_id[which(is.na(geo_data_annot$hgnc_symbol))]
+length(ensembl_id_missing_gene) / nrow(geo_data_annot)
+knitr::kable(ensembl_id_missing_gene[1:10], type = "html", caption = "Missing HGNC Data")
+
+geo_data_annot <- geo_data_annot[which(!is.na(geo_data_annot$hgnc_symbol)),]
+
+```
+
+Since the HGNC symbol missing portion of the data is taking 14% of the total data set (~9000), it is very hard to query through these gene manually. I decided to leave them with the original data set to find out if they were highlighted during the differential expression analysis. If it does shows high differential expression, further investigation is required.
+
+# Data Normalization
+
+```{r pre_normalization}
+
+# Unpivot dataset
+geo_data_unpivot <- geo_data[,-1] %>% 
+  edgeR::cpm() %>% log2() %>%
+  as.data.frame() %>% 
+  tidyr::gather(key=sample, value=log_cpm) %>% subset(log_cpm > 0)
+  
+# Density plot
+ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
+  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample before Normalization")
+
+# Boxplot
+ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
+  ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample before Normalization") + 
+  ggplot2::theme(legend.position="none")
+
+# Bimodal Transformation
+geo_data_debimodalized <- abs(geo_data[,-1] - colMeans(geo_data[,-1]))
+
+```
+Since 
+
+```{r normalization}
+
+# Create edgeR object with counts
+count_matrix <- as.matrix(geo_data_debimodalized)
+rownames(count_matrix) <- geo_data$ensembl_gene_id
+
+d = edgeR::DGEList(counts=count_matrix, group=samples$sample_type)
+
+# Calculate normalization factors
+normalized_count_matrix <- d %>% edgeR::calcNormFactors() %>% edgeR::cpm()
+
+```
+
+```{r post_normalization_datavis}
+
+# Unpivot dataset
+geo_data_normalized_unpivot <- normalized_count_matrix %>% 
+  log2() %>% 
+  as.data.frame() %>% 
+  tidyr::gather(key=sample, value=log_cpm) %>% subset(log_cpm > 0)
+  
+# Density plot
+ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
+  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample after Normalization")
+
+# Boxplot
+ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
+  ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample after Normalization") + 
+  ggplot2::theme(legend.position="none")
 
 ```
