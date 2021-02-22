@@ -3,7 +3,7 @@ title: "BCB420 A1"
 output: html_notebook
 ---
 
-```{r Setup}
+```{r setup, warning=FALSE}
 
 if (!requireNamespace("BiocManager", quietly = TRUE))    
   install.packages("BiocManager")
@@ -28,6 +28,9 @@ if (!requireNamespace("ggplot2", quietly = TRUE))
 
 if (!requireNamespace("tidyr", quietly = TRUE))
   install.packages("tidyr")
+
+if (!requireNamespace("cowplot", quietly = TRUE))
+  install.packages("cowplot")
 
 library("dplyr")
 
@@ -66,7 +69,7 @@ findTopic <- function(keyword, skip = FALSE) {
   if(!skip) return(rs)
 }
 
-findTopic(keyword = "microRNA") %>% head() %>% knitr::kable(format = "html")
+#findTopic(keyword = "microRNA") %>% head() %>% knitr::kable(format = "html")
 
 
 ```
@@ -95,6 +98,8 @@ if (!file.exists("GEO_data.rds")) {
   # Delete directory
   unlink("GSE89225", recursive = TRUE, force = TRUE)
   
+  GEOquery::dbDisconnect(con)
+  
 } else {
   geo_data <- readRDS("GEO_data.rds")
 }
@@ -105,9 +110,33 @@ geo_data[1:5,1:5] %>% knitr::kable(format = "html", caption = "GSE89225 Data Ove
 
 ```
 
+
+
 # Data Cleaning
 
 ## Basic Cleaning 
+
+```{r data_distribution}
+
+# Unpivot dataset
+geo_data_unpivot <- geo_data[,-1] %>% 
+  edgeR::cpm() %>% log2() %>%
+  as.data.frame() %>% 
+  tidyr::gather(key=sample, value=log_cpm) %>% subset(log_cpm > 0)
+  
+# Density plot
+ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
+  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample before Normalization")
+
+# Boxplot
+ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
+  ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample before Normalization") + 
+  ggplot2::theme(legend.position="none")
+
+
+```
+
+The two graph above are density plot and boxplot of the cpm and log2 transformed data set. A clear bimodal distribution can be seen on the density plot, which is usually associated with BRCA RNA seq data as illustrated in the article. 
 
 ```{r basic_cleaning}
 
@@ -118,23 +147,30 @@ rownames(samples) <- c("cell_type","sample_type", "patient")
 samples <- data.frame(t(samples))
 
 # Check for NAs within the data set
-geo_data %>% nrow() - complete.cases(geo_data) %>% sum()
+num_na <- geo_data %>% nrow() - complete.cases(geo_data) %>% sum()
+
+# Check for unique gene id
+num_duplicate <- geo_data$ensembl_gene_id %>% unique() %>% length() - geo_data %>% nrow()
 
 # Check for invalid ensemble_gene_id
 row_with_ensembl_gene <- grepl(pattern = "ENSG", x = geo_data$ensembl_gene_id) 
 geo_data$ensembl_gene_id[!row_with_ensembl_gene] %>% 
   knitr::kable(type = "html", caption = "Abnormal ensembl gene id")
 
+num_invalid <- nrow(geo_data) - length(row_with_ensembl_gene)
 geo_data <- geo_data[row_with_ensembl_gene,]
-
-# Check for non-reading entries
+ 
+# Filter for gene with more than 10 counts
 row_sum <- geo_data[-1] %>% rowSums()
-geo_data[which(row_sum == 0),] %>% dim()
+outlier_size <- geo_data[which(row_sum < 10),] %>% nrow()
 
-# Remove zero reading entires
-geo_data <- geo_data[which(row_sum != 0),]
+# Remove outliers
+geo_data <- geo_data[which(row_sum >= 10),]
 
 ```
+
+In total three checkers are implemented to check for NA, duplication and invalid ensemble gene id in the data set. The result shows `r num_na` NAs and `r num_duplicate` and `r num_invalid` rows with invalid ensemble gene id, which has been removed from the data set. Additionally, filters are set up to eliminate the genes that has total number of read less than 50 in normal counts, intotal of `r outlier_size` number of genes are removed.
+
 
 ## Map data to HGNC
 
@@ -163,69 +199,124 @@ geo_data_annot <- merge(id_conversion, geo_data, all.y = TRUE, sort = FALSE)
 knitr::kable(geo_data_annot[1:5,1:5], type = "html", caption = "HGNC Mapped Data")
 
 # Inspect lost of data via mapping
-ensembl_id_missing_gene <- geo_data_annot$ensembl_gene_id[which(is.na(geo_data_annot$hgnc_symbol))]
-length(ensembl_id_missing_gene) / nrow(geo_data_annot)
+ensembl_id_missing_gene <- geo_data_annot$ensembl_gene_id[which(is.na(geo_data_annot$hgnc_symbol) | (geo_data_annot$hgnc_symbol == ""))]
+percentage_unmatch <- length(ensembl_id_missing_gene) / nrow(geo_data_annot) * 100
 knitr::kable(ensembl_id_missing_gene[1:10], type = "html", caption = "Missing HGNC Data")
 
-geo_data_annot <- geo_data_annot[which(!is.na(geo_data_annot$hgnc_symbol)),]
+geo_data_annot <- geo_data_annot[which(!is.na(geo_data_annot$hgnc_symbol) & (geo_data_annot$hgnc_symbol != "")),]
+
+# Inspect again for duplicated HGNC symbol and delete duplicates
+n_occur <- geo_data_annot$hgnc_symbol %>% table() %>% data.frame()
+n_occur[n_occur$Freq > 1,] %>% knitr::kable(type = "html", caption = "Duplicated HGNC data")
+geo_data_annot[geo_data_annot$hgnc_symbol %in% n_occur$.[n_occur$Freq > 1],]
 
 ```
-
-Since the HGNC symbol missing portion of the data is taking 14% of the total data set (~9000), it is very hard to query through these gene manually. I decided to leave them with the original data set to find out if they were highlighted during the differential expression analysis. If it does shows high differential expression, further investigation is required.
 
 # Data Normalization
-
-```{r pre_normalization}
-
-# Unpivot dataset
-geo_data_unpivot <- geo_data[,-1] %>% 
-  edgeR::cpm() %>% log2() %>%
-  as.data.frame() %>% 
-  tidyr::gather(key=sample, value=log_cpm) %>% subset(log_cpm > 0)
-  
-# Density plot
-ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
-  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample before Normalization")
-
-# Boxplot
-ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
-  ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample before Normalization") + 
-  ggplot2::theme(legend.position="none")
-
-# Bimodal Transformation
-geo_data_debimodalized <- abs(geo_data[,-1] - colMeans(geo_data[,-1]))
-
-```
-Since 
 
 ```{r normalization}
 
 # Create edgeR object with counts
-count_matrix <- as.matrix(geo_data_debimodalized)
-rownames(count_matrix) <- geo_data$ensembl_gene_id
+count_matrix <- as.matrix(geo_data_annot[,-c(1,2)])
+rownames(count_matrix) <- geo_data_annot$hgnc_symbol
 
 d = edgeR::DGEList(counts=count_matrix, group=samples$sample_type)
 
 # Calculate normalization factors
-normalized_count_matrix <- d %>% edgeR::calcNormFactors() %>% edgeR::cpm()
+geo_data_normalized <- d %>% edgeR::calcNormFactors() %>% edgeR::cpm() %>% as.data.frame()
 
 ```
+
+As shown in the data distribution visualization, the data set is in biomodal distribution. Bimodal distribution like normal distribution follows the central limit theorem, where its sample mean is normally distributed. Therefore, I chose to use TTM normalization with edgeR which allows me to effectively remove batch effect without "overtrimming" the original data.  
 
 ```{r post_normalization_datavis}
 
 # Unpivot dataset
-geo_data_normalized_unpivot <- normalized_count_matrix %>% 
+geo_data_normalized_unpivot <- geo_data_normalized %>% 
   log2() %>% 
   as.data.frame() %>% 
   tidyr::gather(key=sample, value=log_cpm) %>% subset(log_cpm > 0)
-  
-# Density plot
-ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
-  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample after Normalization")
 
-# Boxplot
-ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
+# Density plot before and after nor.
+density_after <- ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
+  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample after Normalization") + 
+  ggplot2::theme(legend.position="none")
+
+density_before <- ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=log_cpm, color=sample)) +
+  ggplot2::geom_density() + ggplot2::labs(title = "Density by sample before Normalization") +
+  ggplot2::theme(legend.position="none")
+
+cowplot::plot_grid(density_before, density_after, labels = "AUTO")
+
+# Boxplot before and after nor.
+box_after <- ggplot2::ggplot(geo_data_normalized_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
   ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample after Normalization") + 
   ggplot2::theme(legend.position="none")
 
+box_before <- ggplot2::ggplot(geo_data_unpivot, ggplot2::aes(x=sample, y=log_cpm, color=sample)) + 
+  ggplot2::geom_boxplot() + ggplot2::coord_flip() + ggplot2::labs(title = "Boxplot by sample before Normalization") + 
+  ggplot2::theme(legend.position="none")
+
+cowplot::plot_grid(box_before, box_after, labels = "AUTO")
+
+# Plot MDS
+plotMDS(geo_data_debimodalized, 
+        labels=samples$sample_type, 
+        col = c("red", "dark green")[factor(samples$sample_type)],
+        main = "Before Normalization")
+
+plotMDS(geo_data_normalized, 
+        labels=samples$sample_type, 
+        col = c("red", "dark green")[factor(samples$sample_type)],
+        main = "After Normalization")
+
+# Display final data
+knitr::kable(geo_data_normalized[1:5,1:5],format = "html", caption = "Normalized data sample")
+
+# Save final data 
+if (!file.exists("GEO_data_cleaned.rds")) {
+  saveRDS(geo_data_normalized, "GEO_data_cleaned.rds")
+}
+
 ```
+The first plot is a density plot where graph A is the before normalization plot and graph B is the after normalization plot. It is clear that TTM did not alter the overall shape of the density, however, it makes each of the samples' distribution tighten to one another. This means that TTM is limiting the variation between each samples that could protentially caused by non-biological factors. 
+
+Similar observation can be found by inspecting the boxplots. Each samples shown on the after normalization plot B is more aligned with each other, with less extreme values compare to boxplot A, it is more obvious to look at the sample "treg_NBP_patient3" (colour in purple), where the upper quantile is largely reduced.
+
+Eventually, MDS plots echos the observation from the density plot and boxplot. When comparing the before and after normalization MDS, it is noticeable that the NBPs (normal breast parenchyma) samples is more clustering with the tumor samples in the "before" plot, where in the "after" plot, there is a clear separation between the normal and tumor samples. This is another evidence showing the TTM normalization is eliminating the batch effect.
+
+# Further Discussion
+
+### What are the control and test conditions of the dataset?
+
+The test condition is tumor-resident treg cells in untreated human breast carcinomas, control conditions are cell condition in normal mammary gland, and peripheral blood within the parent population.
+
+### Why is the dataset of interest to you?
+
+BRCA is the most common cancer type in the world, about 13% of the female population will develop breast cancer during their life time, hence it is a topic that is drawing a lot of attentions, including mine. I believe that understanding the biological behavior of tumor-resident treg cell is important for the early detection and curing of breast cancer, which is meaningful and beneficial to the community. Additionally, since breast cancer is one of the most studied cancer type, it has a relatively large sample sizes and various data sources, which make it easier to cross reference and compare methodology and results. 
+
+### Were there expression values that were not unique for specific genes? How did you handle these?
+
+There is none expression values that is not uniuqe for a specific genes, however, it does included a few of expression values that do not look like a gene which is "__no_feature", "__ambiguous", "__too_low_aQual", "__not_aligne" and "__alignment_not_unique", I decided to delete them from the data set.
+
+### Were there expression values that could not be mapped to current HUGO symbols?
+
+Yes, The HGNC symbol missing portion of the data is taking `r percentage_unmatch`% of the total data set, it is huge portion of the data. However, because the total sample size is large, and the data set does not have other gene indicator, query through these gene manually will be difficult. I decided to preserve the gene ensemble id, save it for additional differential expression analysis. If it does shows high differential expression, further investigation is required.
+ 
+### How many outliers were removed?
+
+From the density plot and box plot shown at the topic of the report, the distribution of the data is consistent within each samples. I use filter to eliminate the genes that has a extremly low total count of read, which less than 10 in normal counts (noted the sample size is 34), total of `r outlier_size` number of genes are removed. 
+
+### How did you handle replicates?
+
+I identified 2 gene POLR2J4 and RN7SL274P, which are both pseudogene which is likely to be regulartor RNA segments, since the study are focused more on the transmembrane cytokine and chemokine receptor gene, I decided to remove the duplicates gene from the data set for simplicity. 
+
+### What is the final coverage of your dataset?
+
+The finial coverage of my data set is number of genes: `r nrow(geo_data_normalized)`, number of samples: `r ncol(geo_data_normalized)`.
+
+
+## References
+
+https://www.cancer.gov/about-cancer/causes-prevention/genetics/brca-fact-sheet
+https://bmcgenomics.biomedcentral.com/articles/10.1186/1471-2164-11-S1-S8
