@@ -209,7 +209,7 @@ knitr::kable(ensembl_id_missing_gene[1:10], type = "html", caption = "Missing HG
 
 # Inspect again for duplicated HGNC symbol and delete duplicates
 n_occur <- geo_data_annot$hgnc_symbol %>% table() %>% data.frame()
-geo_data_annot <- geo_data_annot[geo_data_annot$hgnc_symbol %in% n_occur$.[n_occur$Freq > 1],]
+geo_data_annot <- geo_data_annot[geo_data_annot$hgnc_symbol %in% n_occur$.[n_occur$Freq == 1],]
 
 n_occur[n_occur$Freq > 1,] %>% knitr::kable(type = "html", caption = "Duplicated HGNC data")
 
@@ -282,9 +282,9 @@ if (!file.exists("GEO_data_cleaned.rds")) {
 }
 
 ```
-The first plot is a density plot where graph A is the before normalization plot and graph B is the after normalization plot. It is clear that TTM did not alter the overall shape of the density. However, it makes each of the samples' distribution tighten to one another. This means that TTM limits the variation between each sample that is caused by non-biological influencers. 
+The first plot is a density plot where graph A is the before normalization plot and graph B is the after normalization plot. The TTM eliminated the extreme value on the left end of the plot and made each of the samples' distribution tighten to one another. This means that TTM limits the variation between each sample that is caused by non-biological influencers. 
 
-A similar pattern can be identified by inspecting the boxplots. Each sample shown on the after normalization plot B is more aligned with each other, with less extreme values compare to boxplot A. It is more obvious to look at the sample "treg_NBP_patient3" (colour in purple), where the upper quantile is largely reduced.
+A similar pattern can be identified by inspecting the boxplots. Each sample shown on the after normalization plot B is more evenly distributed, with less extreme values compare to boxplot A. It is more obvious to look at the lower and upper quantile of each samples, which is noticeably larger.
 
 Eventually, MDS plots echos the observation from the density plot and boxplot. When comparing the before and after normalization MDS, it is noticeable that the NBPs (normal breast parenchyma) samples are more clustering with the tumour samples in the "before" plot, wherein the "after" plot, there is a clear separation between the normal and tumour samples. This is another evidence showing the TTM normalization is eliminating the batch effect.
 
