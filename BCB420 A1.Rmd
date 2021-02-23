@@ -96,12 +96,12 @@ if (!file.exists("GEO_data.rds")) {
   geo_data <- read.csv(rownames(sfiles)[1])
   
   # Save as rds
-  saveRDS(object = GEO_data, file = "GEO_data.rds")
+  saveRDS(object = geo_data, file = "GEO_data.rds")
   
   # Delete directory
   unlink("GSE89225", recursive = TRUE, force = TRUE)
   
-  GEOquery::dbDisconnect(con)
+  RSQLite::dbDisconnect(con)
   
 } else {
   geo_data <- readRDS("GEO_data.rds")
