@@ -1,0 +1,389 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, warning=FALSE, echo=FALSE}
+
+if (!requireNamespace("BiocManager", quietly = TRUE))    
+  install.packages("BiocManager")
+
+if (!requireNamespace("GEOmetadb", quietly = TRUE))    
+  BiocManager::install("GEOmetadb")
+
+if (!requireNamespace("biomaRt", quietly = TRUE))
+  BiocManager::install("biomaRt")
+
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE))
+  BiocManager::install("ComplexHeatmap")
+
+if (!requireNamespace("DBI", quietly = TRUE))
+  install.packages("DBI")
+
+if (!requireNamespace("dplyr", quietly = TRUE))
+  install.packages("dplyr")
+
+if (!requireNamespace("edgeR", quietly = TRUE))
+  install.packages("edgeR")
+
+if (!requireNamespace("limma", quietly = TRUE))
+  install.packages("limma")
+
+if (!requireNamespace("ggplot2", quietly = TRUE))
+  install.packages("ggplot2")
+
+if (!requireNamespace("tidyr", quietly = TRUE))
+  install.packages("tidyr")
+
+if (!requireNamespace("cowplot", quietly = TRUE))
+  install.packages("cowplot")
+
+if (!requireNamespace("circlize", quietly = TRUE))
+  install.packages("circlize")
+
+library("dplyr")
+
+```
+
+# Load data
+
+
+```{r loading, warning=FALSE, message=FALSE}
+
+if (!file.exists("GEO_data_cleaned.rds")) {
+  rmarkdown::render("A2_SijieXu.Rmd") 
+}
+
+geo_data <- readRDS("GEO_data_cleaned.rds")
+
+# Map sample matrix
+samples <- data.frame(lapply(colnames(geo_data), FUN=function(x){unlist(strsplit(x, split = "_"))}))
+colnames(samples) <- colnames(geo_data)
+rownames(samples) <- c("cell_type","sample_type", "patient")
+samples <- data.frame(t(samples))
+
+```
+
+# Differential gene expression
+
+## Preperations
+
+```{r heatmap, warning=FALSE}
+
+# Create heatmap from cleaned data
+heatmap_matrix <- geo_data %>% as.matrix() %>% t() %>% scale() %>% t() %>% na.omit()
+heatmap_col = circlize::colorRamp2(c(min(heatmap_matrix), 0,           
+                             max(heatmap_matrix)), c("blue", "white", "red"))  
+
+overall_heatmap <- ComplexHeatmap::Heatmap(as.matrix(heatmap_matrix),      
+                           show_row_dend = TRUE,show_column_dend = TRUE,       
+                           col=heatmap_col,show_column_names = TRUE,       
+                           show_row_names = FALSE,show_heatmap_legend = TRUE)
+
+# Plot the overall heatmap
+overall_heatmap
+
+```
+
+The heatmap shows that there is quite a few of gene expression variation between different patients and sample types, thus we should process with differential gene expression analysis. 
+
+```{r MDS}
+
+# Label the MDS plots by patient 
+limma::plotMDS(geo_data, 
+        labels=samples$patient, 
+        col = unlist(rainbow(10))[factor(samples$patient)],
+        main = "MDS plot by patient")
+
+# Label the MDS plots by samples type
+limma::plotMDS(geo_data, 
+        labels=samples$sample_type, 
+        col = c("red", "dark green")[factor(samples$sample_type)],
+        main = "MDS plot by sample type")
+```
+The variation between each sample types and patient are once examine using MDS plot, we can see that the clustering between same patient is actually closer then the clustering of the sample type. Therefore, we should be aware of potential false positive results that is introduced by the patient variation. 
+
+## Model creation
+
+```{r model}
+
+# Setup the model attributesf for EdgeR
+model_design <- model.matrix(~ samples$sample_type)
+d <- edgeR::DGEList(counts=geo_data, group=samples$sample_type)
+d <- edgeR::estimateDisp(d, model_design)
+
+# Fit QLF model and get result
+fit <- edgeR::glmQLFit(d, model_design)
+fit.qlf <- edgeR::glmQLFTest(fit, coef='samples$sample_typetumor')
+
+knitr::kable(edgeR::topTags(qlf.fit), type="html",row.names = FALSE, caption = "Fitted with sample type by edgeR")
+
+topfit_byS.qlf <- edgeR::topTags(qlf.fit,sort.by = "PValue",
+                           n = nrow(geo_data))
+
+topfit_byS.qlf_sig <- length(which(topfit_byS.qlf$table$PValue < 0.01))
+topfit_byS.qlf_sigadj <- length(which(topfit_byS.qlf$table$FDR < 0.05))
+
+# ------------------------------------------------------------------------------------------------
+
+# Design differential expression model according to sample type for limma
+model_design <- model.matrix(~ samples$sample_type)
+minimalSet <- Biobase::ExpressionSet(heatmap_matrix)
+
+fit <- limma::lmFit(minimalSet, model_design) %>% limma::eBayes(trend=TRUE)
+
+topfit <- limma::topTable(fit,                    
+                   coef=ncol(model_design),                   
+                   adjust.method = "BH",                   
+                   number = nrow(geo_data))
+
+topfit$hgnc_symbol <- rownames(topfit)
+
+# Sort by pvalue
+topfit_byS <- topfit[order(topfit$adj.P.Val),]
+
+# Showcase data
+knitr::kable(topfit[1:10,],type="html",row.names = FALSE, caption = "Fitted with sample type by limma")
+
+topfit_byS_sig <- length(which(topfit_byS$P.Value < 0.01))
+topfit_byS_sigadj <- length(which(topfit_byS$adj.P.Val < 0.05))
+
+# ------------------------------------------------------------------------------------------------
+
+# Design differential expression model according to cell type + patient
+model_design <- model.matrix(~ samples$sample_type + samples$patient)
+minimalSet <- Biobase::ExpressionSet(heatmap_matrix)
+
+fit <- limma::lmFit(minimalSet, model_design) %>% limma::eBayes(trend=TRUE)
+
+topfit <- limma::topTable(fit,                    
+                   coef=ncol(model_design),                   
+                   adjust.method = "BH",                   
+                   number = nrow(geo_data))
+
+topfit$hgnc_symbol <- rownames(topfit)
+
+# Sort by pvalue
+topfit_bySP <- topfit[order(topfit$adj.P.Val),]
+
+# Showcase data
+knitr::kable(topfit[1:10,],type="html",row.names = FALSE, caption = "Fitted with sample type & patient by limma")
+
+topfit_bySP_sig <- length(which(topfit_bySP$P.Value < 0.01))
+topfit_bySP_sigadj <- length(which(topfit_bySP$adj.P.Val < 0.05))
+
+```
+
+#### Questions 1-2
+
+1. Calculate p-values for each of the genes in your expression set. How many genes were significantly differentially expressed? What thresholds did you use and why?
+2. Multiple hypothesis testing - correct your p-values using a multiple hypothesis correction method. Which method did you use? And Why? How many genes passed correction?
+
+Here we calculate p-values and adjusted p-values for each of the genes in the expression set. The thresholds of 1% are chosen because our data set is consisted with > 20,000 genes, and if 1% of these are included by random chance there will be around 200 false positives, which is not ideal for the downstream threshold over-representation analysis. However, for the adjusted P-value I choose to use 5% since it is usually enough for RNA-seq analysis.  
+
+From the analysis above, the simple model (model using sample along by limma) labels `r topfit_byS_sig` genes with significant p values, and `r topfit_byS_sigadj` genes with significant adjusted p values. In the meantime, there is `r topfit_bySP_sig` genes with significant p values, and `r topfit_bySP_sigadj` genes with significant adjusted p values in the complex model (using sample + patient by limma). Additionally, the simple model by edgeR produce `r topfit_byS.qlf_sig` genes with significant p values, and `r topfit_byS.qlf_sigadj` genes with significant adjusted p values.
+
+To decided on which model to use we have to visually compare the two. 
+
+## Model selection
+
+### Simple versus complex (Limma)
+
+```{r model_comparison_by_complexity}
+# Model comparison
+simple_model_pvalues <- data.frame(hgnc_symbol =  
+                                     topfit_byS$hgnc_symbol,  
+                                   simple_pvalue=topfit_byS$P.Value)
+
+pat_model_pvalues <-  data.frame(hgnc_symbol =  
+                                   topfit_bySP$hgnc_symbol,  
+                                 patient_pvalue = topfit_bySP$P.Value)
+
+two_models_pvalues <- merge(simple_model_pvalues,  pat_model_pvalues,by.x=1,by.y=1)
+
+# Plot across simple & complex model
+two_models_pvalues$colour <- "black"
+two_models_pvalues$colour[two_models_pvalues$simple_pvalue<0.05] <- "orange"
+two_models_pvalues$colour[two_models_pvalues$patient_pvalue<0.05] <- "blue"
+two_models_pvalues$colour[two_models_pvalues$simple_pvalue<0.05 & 
+                            two_models_pvalues$patient_pvalue<0.05] <- "red"
+
+plot(two_models_pvalues$simple_pvalue,     
+     two_models_pvalues$patient_pvalue,     
+     col = two_models_pvalues$colour,     
+     xlab = "simple model p-values",     
+     ylab ="complex model p-values",      
+     main="Simple vs Complex Limma")
+legend("topleft",inset=.01, legend=c("Simple", "Complex", "Both", "Not Signif"), 
+       fill = c("orange", "blue", "red", "black"))
+
+# ------------------------------------------------------------------------------------------------
+
+# Plot with genes highlighted on the study
+
+two_models_pvalues$colour <- "grey"
+
+plot(two_models_pvalues$simple_pvalue,     
+     two_models_pvalues$patient_pvalue,     
+     col = two_models_pvalues$colour,     
+     xlab = "simple model p-values",     
+     ylab ="complex model p-values",      
+     main="Simple vs Complex Limma with CCR")
+points(two_models_pvalues[which(grepl("CCR",two_models_pvalues$hgnc_symbol)),
+                          2:3],pch=20, col="red", cex=1.5)
+legend("topleft",inset=.01, legend=c("CCR", "rest"), 
+       fill = c("red", "grey"))
+
+```
+
+The complex and simple limma P-value plot shows a clear disagreement between the sample and complex model. This aligns with our MDS plots where the complex model introduces another layers of information and shifted the thresholds list to include lots of gene which is not significantly expressed by looking at their samples alone. Additionally, CCR genes are labeled in the second plot, which is the highlighted genes stated in the research. It is clearly more cluster under the simple model versus the complex model. Therefore, I choose to use the simple model to align with the factor of interest. 
+
+### Limma vs EdgeR method 
+
+```{r model_comparison_by_method, warning=FALSE}
+# Model comparison
+limma_model_pvalues <- data.frame(hgnc_symbol =  
+                                     topfit_byS$hgnc_symbol,  
+                                   limma_pvalue=topfit_byS$P.Value)
+
+edgeR_model_pvalues <-  data.frame(hgnc_symbol =  
+                                   rownames(topfit_byS.qlf$table),  
+                                 edgeR_pvalue = topfit_byS.qlf$table$PValue)
+
+two_models_pvalues <- merge(limma_model_pvalues,  edgeR_model_pvalues,by.x=1,by.y=1)
+
+# Plot across simple & complex model
+two_models_pvalues$colour <- "black"
+two_models_pvalues$colour[two_models_pvalues$limma_pvalue<0.05] <- "orange"
+two_models_pvalues$colour[two_models_pvalues$edgeR_pvalue<0.05] <- "blue"
+two_models_pvalues$colour[two_models_pvalues$limma_pvalue<0.05 & 
+                            two_models_pvalues$edgeR_pvalue<0.05] <- "red"
+
+plot(two_models_pvalues$limma_pvalue,     
+     two_models_pvalues$edgeR_pvalue,     
+     col = two_models_pvalues$colour,     
+     xlab = "Limma model p-values",     
+     ylab ="EdgeR model p-values",      
+     main="Limma vs EdgeR model by sample type")
+legend("topleft",inset=.01, legend=c("Simple", "Complex", "Both", "Not Signif"), 
+       fill = c("orange", "blue", "red", "black"))
+
+# ------------------------------------------------------------------------------------------------
+
+# Plot with genes highlighted on the study
+
+two_models_pvalues$colour <- "grey"
+
+plot(two_models_pvalues$limma_pvalue,     
+     two_models_pvalues$edgeR_pvalue,     
+     col = two_models_pvalues$colour,     
+     xlab = "Limma model p-values",     
+     ylab ="EdgeR model p-values",      
+     main="Limma vs EdgeR by sample type CCR labelled")
+points(two_models_pvalues[which(grepl("CCR",two_models_pvalues$hgnc_symbol)),
+                          2:3],pch=20, col="red", cex=1.5)
+legend("topleft",inset=.01, legend=c("CCR", "rest"), 
+       fill = c("red", "grey"))
+
+```
+
+From the first scatter plot we can see that the model produced by limma and edgeR shares more similarity comparing to the complex model discussed above. The scatter plot labelled with CCR genes shows that more of the CCR gene are label significant under edgeR package comparing to the limma model. Eventually, I prefer the edgeR model Since it actually identify more genes under significant range while aligning better with the orginal research. 
+
+Now I have to create MA plots to show the results. 
+
+## Model results
+
+```{r MDplot, warning=FALSE}
+
+# Plotting using result from samples_type edgeR 
+
+# Clustering samples by sample type
+tumor <- geo_data[, grepl(paste0("tumor"), colnames(geo_data))]
+NBP <- geo_data[, grepl(paste0("NBP"), colnames(geo_data))]
+geo_data_avg <- data.frame(hgnc_symbol = rownames(geo_data), Tumor = rowMeans(tumor), NBP = rowMeans(NBP))
+
+topfit_byS.qlf.result <- cbind(topfit_byS.qlf$table, hgnc_symbol = rownames(topfit_byS.qlf$table))
+
+# Merge it with the fit result
+geo_data_byS <- merge(geo_data_avg, topfit_byS.qlf.result, by.x= "hgnc_symbol", by.y="hgnc_symbol", all=TRUE)
+
+# Count under/over express genes
+under_exp <- sum(geo_data_byS$logFC < 0 & geo_data_byS$PValue < 0.01)
+over_exp <- sum(geo_data_byS$logFC > 0 & geo_data_byS$PValue < 0.01)
+
+# Prepare coloring on the plots
+status <- rep(0, nrow(geo_data_byS))
+status[geo_data_byS$logFC < 0 & geo_data_byS$PValue < 0.01] <- -1
+status[geo_data_byS$logFC > 0 & geo_data_byS$PValue < 0.01] <- 1
+
+limma::plotMD(log2(geo_data_byS_plot), status=status, values=c(-1,1), hl.col=c("blue","red"), main = "MA plots (signifi labelled with edgeR)")
+
+# ------------------------------------------------------------------------------------------------
+
+# Plotting using result from samples_type + patient model
+summa.fit <- limma::decideTests(fit)
+par(mfrow=c(2,2))
+limma::plotMD(fit, coef = 4, status=summa.fit[,"samples$patientpatient2"], 
+              values = c(-1, 1), hl.col=c("blue","red"), main = "MA plots for Patient 1 vs 2")
+limma::plotMD(fit, coef = 3, status=summa.fit[,"samples$patientpatient10"], 
+              values = c(-1, 1), hl.col=c("blue","red"), main = "MA plots for Patient 1 vs 10")
+limma::plotMD(fit, coef = 5, status=summa.fit[,"samples$patientpatient3"], 
+              values = c(-1, 1), hl.col=c("blue","red"), main = "MA plots for Patient 1 vs 3")
+limma::plotMD(fit, coef = 6, status=summa.fit[,"samples$patientpatient4"], 
+              values = c(-1, 1), hl.col=c("blue","red"), main = "MA plots for Patient 1 vs 4")
+
+```
+#### Question 3
+
+3. Show the amount of differentially expressed genes using an MA Plot or a Volcano plot. Highlight genes of interest.
+
+As shown above, we plotted the MA plot using the result from the edgeR package. Underregulated genes are labeled in blue and unregulated gene are labeled in red. There is approxiamtely `r under_exp` underregulated genes and `r over_exp` upregulated genes. Additionally, I also plotted the MA plot from the complex model for patient 1, 3, 4 and 10. It is worth noting that there are quite a few of the genes under/up regulated among each patient. 
+
+
+```{r tophit_heatmap, warning=FALSE, message=FALSE}
+
+# Subset the threshold gene
+top_hits <- topfit_byS.qlf.result$hgnc_symbol[topfit_byS.qlf.result$FDR < 0.05]
+
+# Create and order the heatmap matrix
+heatmap_matrix_tophits <- heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),]
+heatmap_matrix_tophits<- heatmap_matrix_tophits[,
+                          c(grep("tumor",colnames(heatmap_matrix_tophits)),
+                            grep("NBP",colnames(heatmap_matrix_tophits)))]
+
+# Create heatmap attribute
+heatmap_col = circlize::colorRamp2(c(min(heatmap_matrix_tophits), 0,
+                              max(heatmap_matrix_tophits)),
+                            c("blue", "white", "red"))
+
+ha_colours <- c("darkgreen","darkblue")
+names(ha_colours) <- c("tumor", "NBP")
+
+ha <- ComplexHeatmap::HeatmapAnnotation(df=data.frame(
+  type = rep(c("tumor", "NBP"), c(22, 12))),
+  col = list(type = ha_colours))
+
+# Create heatmap
+signif_heatmap <- ComplexHeatmap::Heatmap(as.matrix(heatmap_matrix_tophits),
+                           cluster_rows = TRUE,
+                           cluster_columns = FALSE,
+                           show_row_dend = TRUE,
+                           show_column_dend = FALSE,
+                           col=heatmap_col,
+                           show_column_names = TRUE,
+                           show_row_names = FALSE,
+                           show_heatmap_legend = TRUE,
+                           top_annotation = ha
+ )
+
+signif_heatmap
+
+```
+
+#### Question 4
+
+4. Visualize your top hits using a heatmap. Do you conditions cluster together? Explain why or why not.
+
+Yes, there is a clear clustering between tumor and NBP samples. When looking at the samples labeled in dark blue from the left, there is a clustering on the lower side of the heatmap, in the meantime, a notable red clustering exist on the upper side of the tumor samples, which is labeled in dark green. 
+
+# Thresholded over-representation analysis

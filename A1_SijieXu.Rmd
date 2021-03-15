@@ -1,6 +1,8 @@
 ---
 title: "BCB420 A1"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, warning=FALSE}
@@ -45,8 +47,9 @@ library("dplyr")
 
 ```{r find GEO}
 
-# Query for interested data set regarding human from 2016 and beyond
 
+
+# Query for interested data set regarding human from 2016 and beyond
 findTopic <- function(keyword, skip = FALSE) {
   
   # Get meta data and setup connection
@@ -68,6 +71,8 @@ findTopic <- function(keyword, skip = FALSE) {
    sep=" ")
   
   rs <- RSQLite::dbGetQuery(con,sql)
+  
+  RSQLite::dbDisconnect(con)
   
   if(!skip) return(rs)
 }
@@ -100,8 +105,6 @@ if (!file.exists("GEO_data.rds")) {
   
   # Delete directory
   unlink("GSE89225", recursive = TRUE, force = TRUE)
-  
-  RSQLite::dbDisconnect(con)
   
 } else {
   geo_data <- readRDS("GEO_data.rds")
