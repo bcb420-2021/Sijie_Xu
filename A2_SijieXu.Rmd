@@ -8,15 +8,12 @@ output:
     toc: yes
     toc_depth: '2'
     df_print: paged
-  html_notebook:
-    toc: yes
-    toc_depth: 2
 bibliography: A2_SijieXU.bib
 nocite: |
   @BiocManager, @GEOmetadb, @BioMart, @ComplexHeatmaps, @DBI, @Dplyr, @edgeR, @Limma, @ggplot2, @tidyr, @cowplot, @circlize
 ---
 
-```{r setup, warning=FALSE, echo=FALSE, message=FALSE}
+```{r setup, echo=FALSE, message=FALSE}
 
 if (!requireNamespace("BiocManager", quietly = TRUE))    
   install.packages("BiocManager")
@@ -54,6 +51,9 @@ if (!requireNamespace("cowplot", quietly = TRUE))
 if (!requireNamespace("circlize", quietly = TRUE))
   install.packages("circlize")
 
+if (!requireNamespace("knitr", quietly = TRUE))
+  install.packages("knitr")
+
 library("dplyr")
 
 ```
@@ -65,7 +65,8 @@ library("dplyr")
 ```{r loading, warning=FALSE, message=FALSE, tidy=TRUE}
 
 if (!file.exists("GEO_data_cleaned.rds")) {
-  rmarkdown::render("A2_SijieXu.Rmd") 
+  options(knitr.duplicate.label = 'allow')
+  source(knitr::purl("A1_SijieXu.Rmd", output = tempfile()))
 }
 
 geo_data <- readRDS("GEO_data_cleaned.rds")
@@ -117,10 +118,11 @@ overall_heatmap <- ComplexHeatmap::Heatmap(as.matrix(heatmap_matrix),
                            col=heatmap_col,show_column_names = TRUE,       
                            show_row_names = FALSE,show_heatmap_legend = TRUE)
 
-# Plot the overall heatmap
-overall_heatmap
+# Plot the overall heatmap (output suspressed since it takes too long to run)
+# overall_heatmap
 
 ```
+![Pregenerated heatmap for all genes](image/heatmap.png)
 
 The heatmap shows quite a few gene expression variations between different patients and sample types. Thus we should process with differential gene expression analysis. 
 
@@ -442,10 +444,10 @@ downregulated_genes <- topfit_byS.qlf.result$hgnc_symbol[which(topfit_byS.qlf.re
 
 # Export gene tables
 write.table(x=upregulated_genes,
-            file=file.path("data","mets_upregulated_genes.txt"),sep = "\t",
+            file=file.path("mets_upregulated_genes.txt"),sep = "\t",
             row.names = FALSE,col.names = FALSE,quote = FALSE)
 write.table(x=downregulated_genes,
-            file=file.path("data","mets_downregulated_genes.txt"),sep = "\t",
+            file=file.path("mets_downregulated_genes.txt"),sep = "\t",
             row.names = FALSE,col.names = FALSE,quote = FALSE)
 
 ```
