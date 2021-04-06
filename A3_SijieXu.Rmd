@@ -361,7 +361,7 @@ gsea_directories <- list.files(path = working_dir, pattern = "\\.GseaPreranked")
 if(length(gsea_directories) == 0){
   
   if(!file.exists(gsea_jar)){
-    gsea_jar <- "../GSEA_4.1.0/gsea-cli.sh"
+    gsea_jar <- "/home/rstudio/GSEA_4.1.0/gsea-cli.sh"
   }
   
   # Use the command script
