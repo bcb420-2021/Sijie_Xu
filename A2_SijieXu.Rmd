@@ -393,7 +393,7 @@ top_hits <- topfit_byS.qlf.result$hgnc_symbol[topfit_byS.qlf.result$PValue < 0.0
 
 # Create and order the heatmap matrix
 heatmap_matrix_tophits <- heatmap_matrix[which(rownames(heatmap_matrix) %in% top_hits),]
-heatmap_matrix_tophits<- heatmap_matrix_tophits[,
+heatmap_matrix_tophits <- heatmap_matrix_tophits[,
                           c(grep("tumor",colnames(heatmap_matrix_tophits)),
                             grep("NBP",colnames(heatmap_matrix_tophits)))]
 
@@ -444,11 +444,20 @@ downregulated_genes <- topfit_byS.qlf.result$hgnc_symbol[which(topfit_byS.qlf.re
 
 # Export gene tables
 write.table(x=upregulated_genes,
-            file=file.path("mets_upregulated_genes.txt"),sep = "\t",
+            file=file.path("data", "mets_upregulated_genes.txt"),sep = "\t",
             row.names = FALSE,col.names = FALSE,quote = FALSE)
 write.table(x=downregulated_genes,
-            file=file.path("mets_downregulated_genes.txt"),sep = "\t",
+            file=file.path("data", "mets_downregulated_genes.txt"),sep = "\t",
             row.names = FALSE,col.names = FALSE,quote = FALSE)
+
+if (!file.exists("./data/Supplementary_Table2_mets_ranked_genelist.rnk")) {
+  ranked_genelist <- data.frame(GeneName=topfit_byS.qlf.result$hgnc_symbol, 
+             rank=-log(topfit_byS.qlf.result$PValue,base =10) * 
+               sign(topfit_byS.qlf.result$logFC))
+  ranked_genelist <- ranked_genelist[order(ranked_genelist$rank),]
+  write.table(x=ranked_genelist, file=file.path("data", "Supplementary_Table2_mets_ranked_genelist.rnk"),
+              col.names = F,row.names = F, quote = F,sep="\t",)
+}
 
 ```
 
@@ -492,7 +501,7 @@ The original paper conducted GO pathway enrichment analysis, the exact mechanism
 #### 2. Can you find evidence, i.e. publications, to support some of the results that you see. 
 How does this evidence support your results.
 
-One of the results I found is that the immune response and Type 1 IFNs pathway are upregulated in the tumor cells. This is seen in another study proposing the mechanism through which BRCA1 regulates IFN-γ–dependent signalling, which induces the upregulation. [@BuckleyIFN] Hence this could affect the downstream pathway in the tumor-residenting Treg cell, therefore showing upregulation of type 1 IFNs pathway in our tumor samples. 
+One of the results I found is that the immune response and Type 1 IFNs pathway are upregulated in the tumor cells. This is seen in another study proposing the mechanism through which BRCA1 regulates IFN-γ–dependent signalling, which induces the up regulation. [@BuckleyIFN] Hence this could affect the downstream pathway in the tumor-residenting Treg cell, therefore showing up regulation of type 1 IFNs pathway in our tumor samples. 
 
 Another result I found is the regulation of genome replication. A review article on DNA damage response (DDR) states that DDR activities the regulation of genome replication; it is upregulated in the tumor breast cancer cell. In the meantime, "DNA damage results in an increase in levels of inflammatory cytokines, which activate type I interferons which are known to augment cytotoxic T-cell priming." [@MinchomDDR] The upregulation of genes associated with genome replication in Treg may be coming from the tumor cell in the form of contamination.  
 
