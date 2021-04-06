@@ -10,7 +10,7 @@ output:
     df_print: paged
 bibliography: A2_SijieXu.bib
 nocite: |
-  @BiocManager, @GEOmetadb, @BioMart, @ComplexHeatmaps, @DBI, @Dplyr, @edgeR, @Limma, @ggplot2, @tidyr, @cowplot, @circlize
+  @BiocManager, @GEOmetadb, @BioMart, @ComplexHeatmaps, @DBI, @Dplyr, @edgeR, @Limma, @ggplot2, @tidyr, @cowplot, @circlize, @VennDiagram, @RCurl, @GSA, @httl, @RCy3
 params:
   analysis_name: Tumor_vs_NBP
   working_dir: ./data/
