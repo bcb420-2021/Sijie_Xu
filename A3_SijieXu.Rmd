@@ -22,7 +22,7 @@ params:
   fdr_thresh: 0.01
   pval_thresh: 1
   java_version: 11
-  is_docker: false
+  is_docker: true
 ---
 
 ```{r setup, include=FALSE}
@@ -392,10 +392,8 @@ The method used is the GSEA pre-ranked algorithm [@GSEA], command-line version 4
 ```{r gsea_result}
 
 gsea_report_table <- list.files(path = file.path(working_dir,gsea_output_dir), pattern = "gsea_report.*\\.tsv$")
-gsea_report_for_neg <- read.delim(file.path(working_dir,gsea_output_dir, 
-                                            gsea_report_table[grepl("neg", gsea_report_table)]), stringsAsFactors = F)
-gsea_report_for_pos <- read.delim(file.path(working_dir,gsea_output_dir, 
-                                            gsea_report_table[grepl("pos", gsea_report_table)]), stringsAsFactors = F)
+gsea_report_for_neg <- read.delim(file.path(working_dir,gsea_output_dir, gsea_report_table[grep("neg", gsea_report_table)]), stringsAsFactors = F)
+gsea_report_for_pos <- read.delim(file.path(working_dir,gsea_output_dir, gsea_report_table[grep("pos", gsea_report_table)]), stringsAsFactors = F)
 
 knitr::kable(gsea_report_for_neg[1:10,c(1,4:8)], "html", caption = "Top Down Regulated Enrichment Analysis Result")
 knitr::kable(gsea_report_for_pos[1:10,c(1,4:8)], "html", caption = "Top Up Regulated Enrichment Analysis Result")
